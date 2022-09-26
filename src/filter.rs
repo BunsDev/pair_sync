@@ -1,17 +1,11 @@
 use std::{collections::HashSet, sync::Arc};
 
+use super::abi;
+use crate::dex::Dex;
 use crate::pair::Pair;
 use ethers::prelude::ContractError;
 use ethers::providers::{Http, Provider, ProviderError};
 use ethers::{prelude::abigen, types::H160};
-
-abigen!(
-IUniswapV2Pair,
-r#"[
-    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)
-    function token0() external view returns (address)
-]"#;
-);
 
 //Filters out pairs where the blacklisted address is the token_a address or token_b address
 pub fn filter_blacklisted_tokens(pairs: Vec<Pair>, blacklisted_addresses: Vec<H160>) -> Vec<Pair> {
@@ -65,29 +59,31 @@ pub fn filter_blacklisted_addresses(
 #[allow(dead_code)]
 pub async fn filter_pools_below_usd_threshold(
     pairs: Vec<Pair>,
-    v2_factory_address: H160, //Uniswap v2 factory variant to look up prices
-    usd_weth_pair_address: H160,
+    dexes: Vec<Dex>,
+    usd_address: H160,
     weth_address: H160,
-    usd_value_threshold: f64,
+    usd_threshold: f64,
     provider: Arc<Provider<Http>>,
 ) -> Result<Vec<Pair>, ProviderError> {
     let mut filtered_pairs = vec![];
 
     //Get USD/Weth price
-    let usd_weth_pair = IUniswapV2Pair::new(usd_weth_pair_address, provider);
+    // let usd_weth_pair = abi::IUniswapV2Pair::new(usd_weth_pair_address, provider);
 
-    let (reserve_0, reserve_1, _) = match usd_weth_pair.get_reserves().call().await {
-        Ok(result) => result,
-        Err(contract_error) => match contract_error {
-            ContractError::ProviderError(provider_error) => return Err(provider_error),
-            other => {
-                panic!(
-                    "Error when getting USD/Weth reserves for filter USD Threshold filter: {}",
-                    other.to_string()
-                )
-            }
-        },
-    };
+    // dexes[0].getReserves();
+
+    // let (reserve_0, reserve_1, _) = match usd_weth_pair.get_reserves().call().await {
+    //     Ok(result) => result,
+    //     Err(contract_error) => match contract_error {
+    //         ContractError::ProviderError(provider_error) => return Err(provider_error),
+    //         other => {
+    //             panic!(
+    //                 "Error when getting USD/Weth reserves for filter USD Threshold filter: {}",
+    //                 other.to_string()
+    //             )
+    //         }
+    //     },
+    // };
 
     for pair in pairs {
 

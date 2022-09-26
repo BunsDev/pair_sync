@@ -1,5 +1,10 @@
+use std::sync::Arc;
+
 use crate::dex::DexType;
-use ethers::types::H160;
+use ethers::{
+    providers::{JsonRpcClient, Provider, ProviderError},
+    types::H160,
+};
 
 #[derive(Debug)]
 pub struct Pair {
@@ -52,5 +57,32 @@ impl Pair {
 
     pub fn is_empty(&self) -> bool {
         self.token_a == H160::zero()
+    }
+
+    pub fn reserves_are_zero(&self) -> bool {
+        self.reserve_0 == 0 && self.reserve_1 == 0
+    }
+
+    pub async fn get_reserves<P>(
+        &self,
+        provider: Arc<Provider<P>>,
+    ) -> Result<(u128, u128), ProviderError>
+    where
+        P: JsonRpcClient,
+    {
+        Ok(self
+            .dex_type
+            .get_reserves(self.token_a, self.token_b, self.pair_address, provider)
+            .await?)
+    }
+
+    pub async fn get_token_0<P>(&self, provider: Arc<Provider<P>>) -> Result<H160, ProviderError>
+    where
+        P: JsonRpcClient,
+    {
+        Ok(self
+            .dex_type
+            .get_token_0(self.pair_address, provider)
+            .await?)
     }
 }

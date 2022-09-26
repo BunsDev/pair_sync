@@ -6,45 +6,15 @@ use std::{
 
 use crate::dex::DexType;
 
+use super::abi;
 use super::dex::Dex;
 use super::pair::Pair;
 use ethers::{
-    prelude::{abigen, ContractError},
+    prelude::ContractError,
     providers::{Http, Ipc, Middleware, Provider, ProviderError},
     types::{Address, BlockNumber, Filter, ValueOrArray, H160, U256, U64},
 };
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-
-abigen!(
-    IUniswapV2Factory,
-    r#"[
-        event PairCreated(address indexed token0, address indexed token1, address pair, uint256)
-    ]"#;
-
-    IUniswapV2Pair,
-    r#"[
-        function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)
-        function token0() external view returns (address)
-    ]"#;
-
-    IUniswapV3Factory,
-    r#"[
-        event PoolCreated(address indexed token0, address indexed token1, uint24 indexed fee, int24 tickSpacing, address pool)
-    ]"#;
-
-    IUniswapV3Pool,
-    r#"[
-        function token0() external view returns (address)
-        function token1() external view returns (address)
-        ]"#;
-
-    IErc20,
-    r#"[
-        function balanceOf(address account) external view returns (uint256)
-    ]"#;
-
-
-);
 
 //Get all pairs and sync reserve values for each Dex in the `dexes` vec.
 pub async fn sync_pairs(
@@ -154,7 +124,9 @@ async fn get_all_pairs(
             let logs = provider
                 .get_logs(
                     &Filter::new()
-                        .topic0(ValueOrArray::Value(dex.pair_created_event_signature()))
+                        .topic0(ValueOrArray::Value(
+                            dex.dex_type.pair_created_event_signature(),
+                        ))
                         .from_block(BlockNumber::Number(U64([from_block])))
                         .to_block(BlockNumber::Number(U64([to_block]))),
                 )
@@ -165,68 +137,9 @@ async fn get_all_pairs(
 
             //For each pair created log, create a new Pair type and add it to the pairs vec
             for log in logs {
-                match dex.dex_type {
-                    DexType::UniswapV2 => {
-                        let uniswap_v2_factory =
-                            IUniswapV2Factory::new(dex.factory_address, provider.clone());
-
-                        let (token_a, token_b, pair_address, _) = match uniswap_v2_factory
-                            .decode_event::<(Address, Address, Address, U256)>(
-                                "PairCreated",
-                                log.topics,
-                                log.data,
-                            ) {
-                            Ok(result) => result,
-                            Err(_) => {
-                                //If there was an abi error, continue without adding the pair
-                                continue;
-                            }
-                        };
-
-                        pairs.push(Pair {
-                            dex_type: DexType::UniswapV2,
-                            pair_address,
-                            token_a,
-                            token_b,
-                            //Initialize the following variables as zero values
-                            //They will be populated when getting pair reserves
-                            a_to_b: false,
-                            reserve_0: 0,
-                            reserve_1: 0,
-                            fee: 300,
-                        })
-                    }
-                    DexType::UniswapV3 => {
-                        let uniswap_v3_factory =
-                            IUniswapV3Factory::new(dex.factory_address, provider.clone());
-
-                        let (token_a, token_b, fee, _, pair_address) = match uniswap_v3_factory
-                            .decode_event::<(Address, Address, u128, u128, Address)>(
-                                "PoolCreated",
-                                log.topics,
-                                log.data,
-                            ) {
-                            Ok(result) => result,
-                            Err(_) => {
-                                //If there was an abi error, continue without adding the pair
-                                continue;
-                            }
-                        };
-
-                        pairs.push(Pair {
-                            dex_type: DexType::UniswapV3,
-
-                            pair_address,
-                            token_a,
-                            token_b,
-                            //Initialize the following variables as zero values
-                            //They will be populated when getting pair reserves
-                            a_to_b: false,
-                            reserve_0: 0,
-                            reserve_1: 0,
-                            fee,
-                        })
-                    }
+                let pair = dex.new_pair_from_pair_created_event(log, provider.clone());
+                if !pair.is_empty() {
+                    pairs.push(pair);
                 }
             }
 
@@ -264,7 +177,7 @@ async fn get_pair_reserves(
     progress_bar: ProgressBar,
 ) -> Result<Vec<Pair>, ProviderError> {
     //Initialize a vec to track each async task.
-    let mut handles = vec![];
+    let mut handles: Vec<tokio::task::JoinHandle<Result<Pair, _>>> = vec![];
 
     //Initialize the progress bar message
     progress_bar.set_length(pairs.len() as u64);
@@ -283,106 +196,20 @@ async fn get_pair_reserves(
             progress_bar.inc(1);
 
             //Match the DexType and fetch the reserves for the pair.
-            match pair.dex_type {
-                DexType::UniswapV2 => {
-                    //Initialize a new instance of the Pool
-                    let v2_pair = IUniswapV2Pair::new(pair.pair_address, provider.clone());
+            //set the pair reserves
+            (pair.reserve_0, pair.reserve_1) = pair.get_reserves(provider.clone()).await?;
 
-                    // Make a call to get the reserves
-                    let (reserve_0, reserve_1, _timestamp) =
-                        match v2_pair.get_reserves().call().await {
-                            Ok(result) => result,
-                            Err(contract_error) => match contract_error {
-                                ContractError::ProviderError(provider_error) => {
-                                    return Err(provider_error)
-                                }
-                                _ => {
-                                    return Ok(Pair::empty_pair(DexType::UniswapV2));
-                                }
-                            },
-                        };
+            // Make a call to get token0 to initialize a_to_b
+            let token_0 = pair.get_token_0(provider.clone()).await?;
 
-                    //set the pair reserves
-                    pair.reserve_0 = reserve_0;
-                    pair.reserve_1 = reserve_1;
+            //Update a_to_b
+            if token_0 != H160::zero() {
+                pair.a_to_b = pair.token_a == token_0;
+            } else {
+                pair = Pair::empty_pair(pair.dex_type)
+            };
 
-                    // Make a call to get token0 to initialize a_to_b
-                    let token0 = match v2_pair.token_0().call().await {
-                        Ok(result) => result,
-                        Err(contract_error) => match contract_error {
-                            ContractError::ProviderError(provider_error) => {
-                                return Err(provider_error)
-                            }
-                            _ => {
-                                progress_bar.inc(1);
-                                return Ok(Pair::empty_pair(DexType::UniswapV2));
-                            }
-                        },
-                    };
-
-                    //Update a_to_b
-                    pair.a_to_b = pair.token_a == token0;
-
-                    Ok(pair)
-                }
-                DexType::UniswapV3 => {
-                    //Initialize a new instance of the Pool
-                    let v3_pool = IUniswapV3Pool::new(pair.pair_address, provider.clone());
-
-                    // Make a call to get token0 and initialize a_to_b
-                    let token0 = match v3_pool.token_0().call().await {
-                        Ok(result) => result,
-                        Err(contract_error) => match contract_error {
-                            ContractError::ProviderError(provider_error) => {
-                                return Err(provider_error)
-                            }
-                            _ => {
-                                return Ok(Pair::empty_pair(DexType::UniswapV3));
-                            }
-                        },
-                    };
-
-                    pair.a_to_b = pair.token_a == token0;
-
-                    //Initialize a new instance of token_a
-                    let token_a = IErc20::new(pair.token_a, provider.clone());
-
-                    // Make a call to get the Pool's balance of token_a
-                    let reserve_0 = match token_a.balance_of(pair.pair_address).call().await {
-                        Ok(result) => result,
-                        Err(contract_error) => match contract_error {
-                            ContractError::ProviderError(provider_error) => {
-                                return Err(provider_error)
-                            }
-                            _ => {
-                                return Ok(Pair::empty_pair(DexType::UniswapV3));
-                            }
-                        },
-                    };
-
-                    //Initialize a new instance of token_b
-                    let token_b = IErc20::new(pair.token_b, provider.clone());
-
-                    // Make a call to get the Pool's balance of token_b
-                    let reserve_1 = match token_b.balance_of(pair.pair_address).call().await {
-                        Ok(result) => result,
-                        Err(contract_error) => match contract_error {
-                            ContractError::ProviderError(provider_error) => {
-                                return Err(provider_error)
-                            }
-                            _ => {
-                                return Ok(Pair::empty_pair(DexType::UniswapV3));
-                            }
-                        },
-                    };
-
-                    //Set the pair reserves
-                    pair.reserve_0 = reserve_0.as_u128();
-                    pair.reserve_1 = reserve_1.as_u128();
-
-                    Ok(pair)
-                }
-            }
+            Ok::<Pair, ProviderError>(pair)
         }));
     }
 
@@ -392,7 +219,7 @@ async fn get_pair_reserves(
         match handle.await {
             Ok(sync_result) => match sync_result {
                 Ok(pair) => {
-                    if !pair.is_empty() {
+                    if !pair.reserves_are_zero() {
                         updated_pairs.push(pair)
                     }
                 }
@@ -529,7 +356,9 @@ async fn get_all_pairs_with_ipc(
             let logs = provider
                 .get_logs(
                     &Filter::new()
-                        .topic0(ValueOrArray::Value(dex.pair_created_event_signature()))
+                        .topic0(ValueOrArray::Value(
+                            dex.dex_type.pair_created_event_signature(),
+                        ))
                         .from_block(BlockNumber::Number(U64([from_block])))
                         .to_block(BlockNumber::Number(U64([to_block]))),
                 )
@@ -543,7 +372,7 @@ async fn get_all_pairs_with_ipc(
                 match dex.dex_type {
                     DexType::UniswapV2 => {
                         let uniswap_v2_factory =
-                            IUniswapV2Factory::new(dex.factory_address, provider.clone());
+                            abi::IUniswapV2Factory::new(dex.factory_address, provider.clone());
 
                         let (token_a, token_b, pair_address, _) = match uniswap_v2_factory
                             .decode_event::<(Address, Address, Address, U256)>(
@@ -573,7 +402,7 @@ async fn get_all_pairs_with_ipc(
                     }
                     DexType::UniswapV3 => {
                         let uniswap_v3_factory =
-                            IUniswapV3Factory::new(dex.factory_address, provider.clone());
+                            abi::IUniswapV3Factory::new(dex.factory_address, provider.clone());
 
                         let (token_a, token_b, fee, _, pair_address) = match uniswap_v3_factory
                             .decode_event::<(Address, Address, u128, u128, Address)>(
@@ -661,7 +490,7 @@ async fn get_pair_reserves_with_ipc(
             match pair.dex_type {
                 DexType::UniswapV2 => {
                     //Initialize a new instance of the Pool
-                    let v2_pair = IUniswapV2Pair::new(pair.pair_address, provider.clone());
+                    let v2_pair = abi::IUniswapV2Pair::new(pair.pair_address, provider.clone());
 
                     // Make a call to get the reserves
                     let (reserve_0, reserve_1, _timestamp) =
@@ -702,7 +531,7 @@ async fn get_pair_reserves_with_ipc(
                 }
                 DexType::UniswapV3 => {
                     //Initialize a new instance of the Pool
-                    let v3_pool = IUniswapV3Pool::new(pair.pair_address, provider.clone());
+                    let v3_pool = abi::IUniswapV3Pool::new(pair.pair_address, provider.clone());
 
                     // Make a call to get token0 and initialize a_to_b
                     let token0 = match v3_pool.token_0().call().await {
@@ -720,7 +549,7 @@ async fn get_pair_reserves_with_ipc(
                     pair.a_to_b = pair.token_a == token0;
 
                     //Initialize a new instance of token_a
-                    let token_a = IErc20::new(pair.token_a, provider.clone());
+                    let token_a = abi::IErc20::new(pair.token_a, provider.clone());
 
                     // Make a call to get the Pool's balance of token_a
                     let reserve_0 = match token_a.balance_of(pair.pair_address).call().await {
@@ -736,7 +565,7 @@ async fn get_pair_reserves_with_ipc(
                     };
 
                     //Initialize a new instance of token_b
-                    let token_b = IErc20::new(pair.token_b, provider.clone());
+                    let token_b = abi::IErc20::new(pair.token_b, provider.clone());
 
                     // Make a call to get the Pool's balance of token_b
                     let reserve_1 = match token_b.balance_of(pair.pair_address).call().await {
@@ -767,7 +596,7 @@ async fn get_pair_reserves_with_ipc(
         match handle.await {
             Ok(sync_result) => match sync_result {
                 Ok(pair) => {
-                    if !pair.is_empty() {
+                    if !pair.reserves_are_zero() {
                         updated_pairs.push(pair)
                     }
                 }
@@ -914,7 +743,9 @@ async fn get_all_pairs_with_throttle(
             let logs = provider
                 .get_logs(
                     &Filter::new()
-                        .topic0(ValueOrArray::Value(dex.pair_created_event_signature()))
+                        .topic0(ValueOrArray::Value(
+                            dex.dex_type.pair_created_event_signature(),
+                        ))
                         .from_block(BlockNumber::Number(U64([from_block])))
                         .to_block(BlockNumber::Number(U64([to_block]))),
                 )
@@ -928,7 +759,7 @@ async fn get_all_pairs_with_throttle(
                 match dex.dex_type {
                     DexType::UniswapV2 => {
                         let uniswap_v2_factory =
-                            IUniswapV2Factory::new(dex.factory_address, provider.clone());
+                            abi::IUniswapV2Factory::new(dex.factory_address, provider.clone());
 
                         let (token_a, token_b, pair_address, _) = match uniswap_v2_factory
                             .decode_event::<(Address, Address, Address, U256)>(
@@ -958,7 +789,7 @@ async fn get_all_pairs_with_throttle(
                     }
                     DexType::UniswapV3 => {
                         let uniswap_v3_factory =
-                            IUniswapV3Factory::new(dex.factory_address, provider.clone());
+                            abi::IUniswapV3Factory::new(dex.factory_address, provider.clone());
 
                         let (token_a, token_b, fee, _, pair_address) = match uniswap_v3_factory
                             .decode_event::<(Address, Address, u128, u128, Address)>(
@@ -1048,7 +879,7 @@ async fn get_pair_reserves_with_throttle(
             match pair.dex_type {
                 DexType::UniswapV2 => {
                     //Initialize a new instance of the Pool
-                    let v2_pair = IUniswapV2Pair::new(pair.pair_address, provider.clone());
+                    let v2_pair = abi::IUniswapV2Pair::new(pair.pair_address, provider.clone());
 
                     request_throttle.lock().unwrap().increment_or_sleep();
                     // Make a call to get the reserves
@@ -1090,7 +921,7 @@ async fn get_pair_reserves_with_throttle(
                 }
                 DexType::UniswapV3 => {
                     //Initialize a new instance of the Pool
-                    let v3_pool = IUniswapV3Pool::new(pair.pair_address, provider.clone());
+                    let v3_pool = abi::IUniswapV3Pool::new(pair.pair_address, provider.clone());
 
                     request_throttle.lock().unwrap().increment_or_sleep();
                     // Make a call to get token0 and initialize a_to_b
@@ -1109,7 +940,7 @@ async fn get_pair_reserves_with_throttle(
                     pair.a_to_b = pair.token_a == token0;
 
                     //Initialize a new instance of token_a
-                    let token_a = IErc20::new(pair.token_a, provider.clone());
+                    let token_a = abi::IErc20::new(pair.token_a, provider.clone());
 
                     request_throttle.lock().unwrap().increment_or_sleep();
                     // Make a call to get the Pool's balance of token_a
@@ -1126,7 +957,7 @@ async fn get_pair_reserves_with_throttle(
                     };
 
                     //Initialize a new instance of token_b
-                    let token_b = IErc20::new(pair.token_b, provider.clone());
+                    let token_b = abi::IErc20::new(pair.token_b, provider.clone());
 
                     request_throttle.lock().unwrap().increment_or_sleep();
                     // Make a call to get the Pool's balance of token_b
@@ -1158,7 +989,7 @@ async fn get_pair_reserves_with_throttle(
         match handle.await {
             Ok(sync_result) => match sync_result {
                 Ok(pair) => {
-                    if !pair.is_empty() {
+                    if !pair.reserves_are_zero() {
                         updated_pairs.push(pair)
                     }
                 }
