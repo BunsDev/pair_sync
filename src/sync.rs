@@ -226,7 +226,7 @@ where
 
             //Get the pair reserves
             //If the pair is uniswapv3, two rpc calls are made to initialize reserves
-            //Because of this, the throttle increments by three to be conservative
+            //Because of this, the throttle increments by two to be conservative
             request_throttle.lock().unwrap().increment_or_sleep(2);
             (pair.reserve_0, pair.reserve_1) = pair.get_reserves(provider.clone()).await?;
 
