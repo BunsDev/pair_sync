@@ -18,7 +18,7 @@ where
     P: 'static + JsonRpcClient,
 {
     //Sync pairs with throttle but set the requests per second limit to 0, disabling the throttle.
-    Ok(sync_pairs_with_throttle(dexes, provider, 0).await?)
+    sync_pairs_with_throttle(dexes, provider, 0).await
 }
 
 //Get all pairs and sync reserve values for each Dex in the `dexes` vec.

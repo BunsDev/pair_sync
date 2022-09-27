@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 
 use ethers::{
     prelude::ContractError,
@@ -67,7 +67,7 @@ impl Dex {
             }
             DexType::UniswapV3 => {
                 let uniswap_v3_factory =
-                    abi::IUniswapV3Factory::new(self.factory_address, provider.clone());
+                    abi::IUniswapV3Factory::new(self.factory_address, provider);
 
                 let (token_a, token_b, fee, _, pair_address) = match uniswap_v3_factory
                     .decode_event::<(Address, Address, u128, u128, Address)>(

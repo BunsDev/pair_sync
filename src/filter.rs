@@ -1,11 +1,8 @@
-use std::{collections::HashSet, sync::Arc};
-
-use super::abi;
 use crate::dex::Dex;
 use crate::pair::Pair;
-use ethers::prelude::ContractError;
 use ethers::providers::{Http, Provider, ProviderError};
-use ethers::{prelude::abigen, types::H160};
+use ethers::types::H160;
+use std::{collections::HashSet, sync::Arc};
 
 //Filters out pairs where the blacklisted address is the token_a address or token_b address
 pub fn filter_blacklisted_tokens(pairs: Vec<Pair>, blacklisted_addresses: Vec<H160>) -> Vec<Pair> {
@@ -59,13 +56,13 @@ pub fn filter_blacklisted_addresses(
 #[allow(dead_code)]
 pub async fn filter_pools_below_usd_threshold(
     pairs: Vec<Pair>,
-    dexes: Vec<Dex>,
-    usd_address: H160,
-    weth_address: H160,
-    usd_threshold: f64,
-    provider: Arc<Provider<Http>>,
+    _dexes: Vec<Dex>,
+    _usd_address: H160,
+    _weth_address: H160,
+    _usd_threshold: f64,
+    _provider: Arc<Provider<Http>>,
 ) -> Result<Vec<Pair>, ProviderError> {
-    let mut filtered_pairs = vec![];
+    let filtered_pairs = vec![];
 
     //Get USD/Weth price
     // let usd_weth_pair = abi::IUniswapV2Pair::new(usd_weth_pair_address, provider);
@@ -85,7 +82,7 @@ pub async fn filter_pools_below_usd_threshold(
     //     },
     // };
 
-    for pair in pairs {
+    for _pair in pairs {
 
         //Get token_a/Weth price
 
@@ -103,7 +100,7 @@ pub async fn filter_pools_below_usd_threshold(
 //Filter that removes pools with that contain less than a specified weth value
 //
 #[allow(dead_code)]
-fn filter_pools_below_weth_threshold(weth_address: H160, weth_value_threshold: f64) {}
+fn filter_pools_below_weth_threshold(_weth_address: H160, _weth_value_threshold: f64) {}
 
 //Filter to remove tokens that incorporate fees on transfer.
 //This filter determines fee on transfer tokens by simulating a transfer and checking if the recieved amount is less

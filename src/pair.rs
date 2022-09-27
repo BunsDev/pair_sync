@@ -70,19 +70,15 @@ impl Pair {
     where
         P: JsonRpcClient,
     {
-        Ok(self
-            .dex_type
+        self.dex_type
             .get_reserves(self.token_a, self.token_b, self.pair_address, provider)
-            .await?)
+            .await
     }
 
     pub async fn get_token_0<P>(&self, provider: Arc<Provider<P>>) -> Result<H160, ProviderError>
     where
         P: JsonRpcClient,
     {
-        Ok(self
-            .dex_type
-            .get_token_0(self.pair_address, provider)
-            .await?)
+        self.dex_type.get_token_0(self.pair_address, provider).await
     }
 }
