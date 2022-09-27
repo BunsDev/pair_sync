@@ -1,4 +1,4 @@
-use ethers::providers::ProviderError;
+use ethers::providers::{Http, Provider, ProviderError};
 
 use pair_sync::{dex::Dex, dex::DexType, sync};
 
@@ -6,6 +6,7 @@ use pair_sync::{dex::Dex, dex::DexType, sync};
 async fn main() -> Result<(), ProviderError> {
     //Add rpc endpoint here:
     let rpc_endpoint = "";
+    let provider = Provider::<Http>::try_from(rpc_endpoint).unwrap();
 
     let mut dexes = vec![];
 
@@ -31,7 +32,7 @@ async fn main() -> Result<(), ProviderError> {
     ));
 
     //Sync pairs
-    sync::sync_pairs(dexes, rpc_endpoint).await?;
+    sync::sync_pairs(dexes, provider).await?;
 
     Ok(())
 }

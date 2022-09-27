@@ -1,6 +1,9 @@
 use std::str::FromStr;
 
-use ethers::{providers::ProviderError, types::H160};
+use ethers::{
+    providers::{Http, Provider, ProviderError},
+    types::H160,
+};
 
 use pair_sync::{
     dex::{Dex, DexType},
@@ -11,6 +14,7 @@ use pair_sync::{
 async fn main() -> Result<(), ProviderError> {
     //Add rpc endpoint here:
     let rpc_endpoint = "";
+    let provider = Provider::<Http>::try_from(rpc_endpoint).unwrap();
 
     let mut dexes = vec![];
 
@@ -22,7 +26,7 @@ async fn main() -> Result<(), ProviderError> {
     ));
 
     //Sync pairs
-    let pairs = sync::sync_pairs_with_throttle(dexes, rpc_endpoint, 10).await?;
+    let pairs = sync::sync_pairs_with_throttle(dexes, provider, 10).await?;
 
     //Create a list of blacklisted tokens
     let blacklisted_tokens =

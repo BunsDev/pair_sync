@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use ethers::providers::ProviderError;
+use ethers::providers::{Ipc, Provider, ProviderError};
 
 use pair_sync::{dex::Dex, dex::DexType, sync};
 
@@ -8,6 +8,10 @@ use pair_sync::{dex::Dex, dex::DexType, sync};
 async fn main() -> Result<(), ProviderError> {
     //Add ipc endpoint here:
     let ipc_endpoint = "";
+
+    let provider: Provider<Ipc> = Provider::connect_ipc(ipc_endpoint)
+        .await?
+        .interval(Duration::from_millis(2000));
 
     let mut dexes = vec![];
 
@@ -33,7 +37,7 @@ async fn main() -> Result<(), ProviderError> {
     ));
 
     //Sync pairs
-    sync::sync_pairs_with_ipc(dexes, ipc_endpoint, Duration::from_millis(2000)).await?;
+    sync::sync_pairs(dexes, provider).await?;
 
     Ok(())
 }
