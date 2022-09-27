@@ -19,7 +19,7 @@ dexes.push(Dex::new(
 ));
 
 //Sync all pairs from Univ3
-let pairs: Vec<Pair> = sync::sync_pairs(dexes, rpc_endpoint).await?;
+let pairs: Vec<Pair> = sync::sync_pairs(dexes, provider).await?;
 ```
 
 ### Supported Dexes
