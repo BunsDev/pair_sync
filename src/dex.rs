@@ -38,7 +38,7 @@ impl Dex {
         token_a: H160,
         token_b: H160,
         provider: Arc<Provider<P>>,
-    ) -> Result<H160, PairSyncError<P>>
+    ) -> Result<(H160, u32), PairSyncError<P>>
     where
         P: 'static + JsonRpcClient,
     {
@@ -47,7 +47,10 @@ impl Dex {
                 let uniswap_v2_factory =
                     abi::IUniswapV2Factory::new(self.factory_address, provider);
 
-                Ok(uniswap_v2_factory.get_pair(token_a, token_b).call().await?)
+                Ok((
+                    uniswap_v2_factory.get_pair(token_a, token_b).call().await?,
+                    300,
+                ))
             }
 
             DexType::UniswapV3 => {
@@ -56,6 +59,7 @@ impl Dex {
 
                 let mut best_liquidity = 0;
                 let mut best_pool_address = H160::zero();
+                let mut best_fee = 100;
 
                 for fee in [100, 300, 500, 1000] {
                     let pool_address = uniswap_v3_factory
@@ -69,10 +73,11 @@ impl Dex {
                     if best_liquidity < liquidity {
                         best_liquidity = liquidity;
                         best_pool_address = pool_address;
+                        best_fee = fee;
                     }
                 }
 
-                Ok(best_pool_address)
+                Ok((best_pool_address, best_fee))
             }
         }
     }

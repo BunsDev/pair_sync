@@ -87,11 +87,46 @@ impl Pair {
             .await
     }
 
+    pub async fn update_reserves<P>(
+        &mut self,
+        provider: Arc<Provider<P>>,
+    ) -> Result<(), ProviderError>
+    where
+        P: JsonRpcClient,
+    {
+        let (reserve0, reserve1) = self
+            .dex_type
+            .get_reserves(self.token_a, self.token_b, self.pair_address, provider)
+            .await?;
+
+        self.reserve_0 = reserve0;
+        self.reserve_1 = reserve1;
+
+        Ok(())
+    }
+
     pub async fn get_token_0<P>(&self, provider: Arc<Provider<P>>) -> Result<H160, ProviderError>
     where
         P: JsonRpcClient,
     {
         self.dex_type.get_token_0(self.pair_address, provider).await
+    }
+
+    pub async fn update_a_to_b<P>(
+        &mut self,
+        provider: Arc<Provider<P>>,
+    ) -> Result<(), ProviderError>
+    where
+        P: JsonRpcClient,
+    {
+        let token0 = self
+            .dex_type
+            .get_token_0(self.pair_address, provider)
+            .await?;
+
+        self.a_to_b = token0 == self.token_a;
+
+        Ok(())
     }
 
     pub async fn get_price<P>(
