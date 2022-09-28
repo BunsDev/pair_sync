@@ -26,7 +26,9 @@ async fn main() -> Result<(), ProviderError> {
     ));
 
     //Sync pairs
-    let pairs = sync::sync_pairs_with_throttle(dexes, provider, 10).await?;
+    let pairs = sync::sync_pairs_with_throttle(dexes, provider, 10)
+        .await
+        .expect("something went wrong when syncing pairs");
 
     //Create a list of blacklisted tokens
     let blacklisted_tokens =

@@ -32,7 +32,9 @@ async fn main() -> Result<(), ProviderError> {
     ));
 
     //Sync pairs
-    sync::sync_pairs(dexes, provider).await?;
+    sync::sync_pairs(dexes, provider)
+        .await
+        .expect("something went wrong when syncing pairs");
 
     Ok(())
 }

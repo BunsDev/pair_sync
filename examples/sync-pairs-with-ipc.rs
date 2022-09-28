@@ -5,7 +5,7 @@ use ethers::providers::{Ipc, JsonRpcClient, Provider, ProviderError};
 use pair_sync::{dex::Dex, dex::DexType, error::PairSyncError, sync};
 
 #[tokio::main]
-async fn main() -> Result<(), PairSyncError<P>> {
+async fn main() -> Result<(), ProviderError> {
     //Add ipc endpoint here:
     let ipc_endpoint = "";
 
@@ -37,7 +37,9 @@ async fn main() -> Result<(), PairSyncError<P>> {
     ));
 
     //Sync pairs
-    sync::sync_pairs(dexes, provider).await?;
+    sync::sync_pairs(dexes, provider)
+        .await
+        .expect("something went wrong when syncing pairs");
 
     Ok(())
 }
