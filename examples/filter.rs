@@ -1,7 +1,7 @@
-use std::str::FromStr;
+use std::{error::Error, str::FromStr};
 
 use ethers::{
-    providers::{Http, Provider, ProviderError},
+    providers::{Http, Provider},
     types::H160,
 };
 
@@ -11,7 +11,7 @@ use pair_sync::{
 };
 
 #[tokio::main]
-async fn main() -> Result<(), ProviderError> {
+async fn main() -> Result<(), Box<dyn Error>> {
     //Add rpc endpoint here:
     let rpc_endpoint = "";
     let provider = Provider::<Http>::try_from(rpc_endpoint).unwrap();
@@ -26,9 +26,7 @@ async fn main() -> Result<(), ProviderError> {
     ));
 
     //Sync pairs
-    let pairs = sync::sync_pairs_with_throttle(dexes, provider, 10)
-        .await
-        .expect("something went wrong when syncing pairs");
+    let pairs = sync::sync_pairs_with_throttle(dexes, provider, 10).await?;
 
     //Create a list of blacklisted tokens
     let blacklisted_tokens =

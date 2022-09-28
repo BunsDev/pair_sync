@@ -1,9 +1,11 @@
+use std::error::Error;
+
 use ethers::providers::{Http, Provider, ProviderError};
 
 use pair_sync::{dex::Dex, dex::DexType, sync};
 
 #[tokio::main]
-async fn main() -> Result<(), ProviderError> {
+async fn main() -> Result<(), Box<dyn Error>> {
     //Add rpc endpoint here:
     let rpc_endpoint = "";
     let provider = Provider::<Http>::try_from(rpc_endpoint).unwrap();
@@ -24,9 +26,6 @@ async fn main() -> Result<(), ProviderError> {
         12369621,
     ));
     //Sync pairs
-    sync::sync_pairs_with_throttle(dexes, provider, 10)
-        .await
-        .expect("something went wrong when syncing pairs");
-
+    sync::sync_pairs_with_throttle(dexes, provider, 10).await?;
     Ok(())
 }

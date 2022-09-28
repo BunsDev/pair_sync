@@ -2,7 +2,7 @@ use std::{str::FromStr, sync::Arc};
 
 use ethers::{
     prelude::ContractError,
-    providers::{JsonRpcClient, Middleware, Provider, ProviderError},
+    providers::{JsonRpcClient, Provider, ProviderError},
     types::{Address, BlockNumber, Log, H160, H256, U256},
 };
 

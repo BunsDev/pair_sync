@@ -1,11 +1,11 @@
 use std::time::Duration;
 
 use ethers::providers::{Ipc, Provider, ProviderError};
-
 use pair_sync::{dex::Dex, dex::DexType, sync};
+use std::error::Error;
 
 #[tokio::main]
-async fn main() -> Result<(), ProviderError> {
+async fn main() -> Result<(), Box<dyn Error>> {
     //Add ipc endpoint here:
     let ipc_endpoint = "";
 
@@ -37,9 +37,7 @@ async fn main() -> Result<(), ProviderError> {
     ));
 
     //Sync pairs
-    sync::sync_pairs(dexes, provider)
-        .await
-        .expect("something went wrong when syncing pairs");
+    sync::sync_pairs(dexes, provider).await?;
 
     Ok(())
 }
