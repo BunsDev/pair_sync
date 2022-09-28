@@ -1,3 +1,5 @@
+use crate::error::PairSyncError;
+
 use super::dex::Dex;
 use super::pair::Pair;
 use super::throttle::RequestThrottle;
@@ -13,7 +15,7 @@ use std::sync::{Arc, Mutex};
 pub async fn sync_pairs<P>(
     dexes: Vec<Dex>,
     provider: Provider<P>,
-) -> Result<Vec<Pair>, ProviderError>
+) -> Result<Vec<Pair>, PairSyncError<P>>
 where
     P: 'static + JsonRpcClient,
 {
@@ -26,7 +28,7 @@ pub async fn sync_pairs_with_throttle<P>(
     dexes: Vec<Dex>,
     provider: Provider<P>,
     requests_per_second_limit: usize,
-) -> Result<Vec<Pair>, ProviderError>
+) -> Result<Vec<Pair>, PairSyncError<P>>
 where
     P: 'static + JsonRpcClient,
 {
@@ -79,7 +81,7 @@ where
             )
             .await?;
 
-            Ok::<_, ProviderError>(pairs)
+            Ok::<_, PairSyncError<P>>(pairs)
         }));
     }
 
@@ -200,7 +202,7 @@ async fn get_pair_reserves<P>(
     provider: Arc<Provider<P>>,
     request_throttle: Arc<Mutex<RequestThrottle>>,
     progress_bar: ProgressBar,
-) -> Result<Vec<Pair>, ProviderError>
+) -> Result<Vec<Pair>, PairSyncError<P>>
 where
     P: 'static + JsonRpcClient,
 {
@@ -241,7 +243,10 @@ where
                 pair = Pair::empty_pair(pair.dex_type)
             };
 
-            Ok::<Pair, ProviderError>(pair)
+            //Update token decimals
+            pair.update_token_decimals(provider.clone()).await?;
+
+            Ok::<Pair, PairSyncError<P>>(pair)
         }));
     }
 

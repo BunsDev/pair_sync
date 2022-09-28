@@ -1,6 +1,7 @@
-use crate::dex::Dex;
+use crate::dex::{self, Dex};
+use crate::error::PairSyncError;
 use crate::pair::Pair;
-use ethers::providers::{Http, Provider, ProviderError};
+use ethers::providers::{Http, JsonRpcClient, Provider, ProviderError};
 use ethers::types::H160;
 use std::{collections::HashSet, sync::Arc};
 
@@ -52,39 +53,35 @@ pub fn filter_blacklisted_addresses(
     filtered_pairs
 }
 
+//TODO: write a helperfunction to create a usd_weth_pair pool
+
 //Filter that removes pools with that contain less than a specified usd value
 #[allow(dead_code)]
-pub async fn filter_pools_below_usd_threshold(
+pub async fn filter_pools_below_usd_threshold<P>(
     pairs: Vec<Pair>,
-    _dexes: Vec<Dex>,
-    _usd_address: H160,
-    _weth_address: H160,
+    dexes: Vec<Dex>,
+    usd_weth_pair: Pair,
+    weth_address: H160,
     _usd_threshold: f64,
-    _provider: Arc<Provider<Http>>,
-) -> Result<Vec<Pair>, ProviderError> {
+    provider: Arc<Provider<P>>,
+) -> Result<Vec<Pair>, PairSyncError<P>>
+where
+    P: 'static + JsonRpcClient,
+{
     let filtered_pairs = vec![];
 
-    //Get USD/Weth price
-    // let usd_weth_pair = abi::IUniswapV2Pair::new(usd_weth_pair_address, provider);
+    //TODO: get usd weth price
 
-    // dexes[0].getReserves();
-
-    // let (reserve_0, reserve_1, _) = match usd_weth_pair.get_reserves().call().await {
-    //     Ok(result) => result,
-    //     Err(contract_error) => match contract_error {
-    //         ContractError::ProviderError(provider_error) => return Err(provider_error),
-    //         other => {
-    //             panic!(
-    //                 "Error when getting USD/Weth reserves for filter USD Threshold filter: {}",
-    //                 other.to_string()
-    //             )
-    //         }
-    //     },
-    // };
-
-    for _pair in pairs {
-
+    for pair in pairs {
         //Get token_a/Weth price
+        let token_a_weth_pair_address =
+            get_token_to_weth_pool(pair.token_a, weth_address, &dexes, provider.clone()).await?;
+
+        //TODO: document behavior where if the pair address can not be found in the dexes you provided,
+        //it will be dropped from the final filtered pairs
+        if token_a_weth_pair_address == H160::zero() {
+            continue;
+        }
 
         //Calculate token_a usd value
 
@@ -95,6 +92,29 @@ pub async fn filter_pools_below_usd_threshold(
         //Compare the sum of token_a and token_b usd value against the specified threshold
     }
     Ok(filtered_pairs)
+}
+
+//Gets the best token to weth pairing from the dexes provided
+async fn get_token_to_weth_pool<P>(
+    token_a: H160,
+    weth_address: H160,
+    dexes: &Vec<Dex>,
+    provider: Arc<Provider<P>>,
+) -> Result<H160, PairSyncError<P>>
+where
+    P: 'static + JsonRpcClient,
+{
+    let mut token_a_weth_pair_address = H160::zero();
+    for dex in dexes {
+        token_a_weth_pair_address = dex
+            .get_pair_with_best_liquidity(token_a, weth_address, provider.clone())
+            .await?;
+        if token_a_weth_pair_address != H160::zero() {
+            break;
+        }
+    }
+
+    Ok(token_a_weth_pair_address)
 }
 
 //Filter that removes pools with that contain less than a specified weth value

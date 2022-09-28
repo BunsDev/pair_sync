@@ -1,6 +1,10 @@
 use std::sync::Arc;
 
-use crate::dex::DexType;
+use crate::{
+    abi,
+    dex::{Dex, DexType},
+    error::PairSyncError,
+};
 use ethers::{
     providers::{JsonRpcClient, Provider, ProviderError},
     types::H160,
@@ -10,11 +14,13 @@ use ethers::{
 pub struct Pair {
     pub pair_address: H160,
     pub token_a: H160,
+    pub token_a_decimals: u8,
     pub token_b: H160,
+    pub token_b_decimals: u8,
     pub a_to_b: bool,
     pub reserve_0: u128,
     pub reserve_1: u128,
-    pub fee: u128,
+    pub fee: u32,
     pub dex_type: DexType,
 }
 
@@ -23,17 +29,21 @@ impl Pair {
     pub fn new(
         pair_address: H160,
         token_a: H160,
+        token_a_decimals: u8,
         token_b: H160,
+        token_b_decimals: u8,
         a_to_b: bool,
         reserve_0: u128,
         reserve_1: u128,
-        fee: u128,
+        fee: u32,
         dex_type: DexType,
     ) -> Pair {
         Pair {
             pair_address,
             token_a,
+            token_a_decimals,
             token_b,
+            token_b_decimals,
             a_to_b,
             reserve_0,
             reserve_1,
@@ -46,7 +56,9 @@ impl Pair {
         Pair {
             pair_address: H160::zero(),
             token_a: H160::zero(),
+            token_a_decimals: 0,
             token_b: H160::zero(),
+            token_b_decimals: 0,
             a_to_b: false,
             reserve_0: 0,
             reserve_1: 0,
@@ -80,5 +92,74 @@ impl Pair {
         P: JsonRpcClient,
     {
         self.dex_type.get_token_0(self.pair_address, provider).await
+    }
+
+    pub async fn get_price<P>(
+        &self,
+        a_per_b: bool,
+        provider: Arc<Provider<P>>,
+    ) -> Result<f64, PairSyncError<P>>
+    where
+        P: JsonRpcClient,
+    {
+        let (reserve_0, reserve_1) = self.get_reserves(provider.clone()).await?;
+
+        let reserve_0 = (reserve_0 * 10u128.pow(self.token_a_decimals.into())) as f64;
+        let reserve_1 = (reserve_1 * 10u128.pow(self.token_b_decimals.into())) as f64;
+
+        match self.dex_type {
+            DexType::UniswapV2 => {
+                if self.a_to_b {
+                    if a_per_b {
+                        return Ok(reserve_0 / reserve_1);
+                    } else {
+                        return Ok(reserve_1 / reserve_0);
+                    }
+                } else {
+                    if a_per_b {
+                        return Ok(reserve_1 / reserve_0);
+                    } else {
+                        return Ok(reserve_0 / reserve_1);
+                    }
+                }
+            }
+
+            DexType::UniswapV3 => {
+                //TODO: double check this
+                if self.a_to_b {
+                    if a_per_b {
+                        return Ok(reserve_0 / reserve_1);
+                    } else {
+                        return Ok(reserve_1 / reserve_0);
+                    }
+                } else {
+                    if a_per_b {
+                        return Ok(reserve_1 / reserve_0);
+                    } else {
+                        return Ok(reserve_0 / reserve_1);
+                    }
+                }
+            }
+        }
+    }
+
+    pub async fn update_token_decimals<P>(
+        &mut self,
+        provider: Arc<Provider<P>>,
+    ) -> Result<(), PairSyncError<P>>
+    where
+        P: 'static + JsonRpcClient,
+    {
+        self.token_a_decimals = abi::IErc20::new(self.token_a, provider.clone())
+            .decimals()
+            .call()
+            .await?;
+
+        self.token_b_decimals = abi::IErc20::new(self.token_a, provider)
+            .decimals()
+            .call()
+            .await?;
+
+        Ok(())
     }
 }

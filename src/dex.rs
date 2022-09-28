@@ -2,11 +2,11 @@ use std::{str::FromStr, sync::Arc};
 
 use ethers::{
     prelude::ContractError,
-    providers::{JsonRpcClient, Provider, ProviderError},
+    providers::{JsonRpcClient, Middleware, Provider, ProviderError},
     types::{Address, BlockNumber, Log, H160, H256, U256},
 };
 
-use crate::{abi, pair::Pair};
+use crate::{abi, error::PairSyncError, pair::Pair};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Dex {
@@ -27,6 +27,53 @@ impl Dex {
             factory_address: H160::from_slice(factory_address.as_bytes()),
             dex_type,
             creation_block: BlockNumber::Number(creation_block.into()),
+        }
+    }
+
+    //TODO: rename this to be specific to what it needs to do
+    //This should get the pair with the best liquidity from the dex variant.
+    //If univ2, there will only be one pool, if univ3 there will be multiple
+    pub async fn get_pair_with_best_liquidity<P>(
+        &self,
+        token_a: H160,
+        token_b: H160,
+        provider: Arc<Provider<P>>,
+    ) -> Result<H160, PairSyncError<P>>
+    where
+        P: 'static + JsonRpcClient,
+    {
+        match self.dex_type {
+            DexType::UniswapV2 => {
+                let uniswap_v2_factory =
+                    abi::IUniswapV2Factory::new(self.factory_address, provider);
+
+                Ok(uniswap_v2_factory.get_pair(token_a, token_b).call().await?)
+            }
+
+            DexType::UniswapV3 => {
+                let uniswap_v3_factory =
+                    abi::IUniswapV3Factory::new(self.factory_address, provider.clone());
+
+                let mut best_liquidity = 0;
+                let mut best_pool_address = H160::zero();
+
+                for fee in [100, 300, 500, 1000] {
+                    let pool_address = uniswap_v3_factory
+                        .get_pool(token_a, token_b, fee)
+                        .call()
+                        .await?;
+
+                    let uniswap_v3_pool = abi::IUniswapV3Pool::new(pool_address, provider.clone());
+
+                    let liquidity = uniswap_v3_pool.liquidity().call().await?;
+                    if best_liquidity < liquidity {
+                        best_liquidity = liquidity;
+                        best_pool_address = pool_address;
+                    }
+                }
+
+                Ok(best_pool_address)
+            }
         }
     }
 
@@ -59,6 +106,8 @@ impl Dex {
                     token_b,
                     //Initialize the following variables as zero values
                     //They will be populated when getting pair reserves
+                    token_a_decimals: 0,
+                    token_b_decimals: 0,
                     a_to_b: false,
                     reserve_0: 0,
                     reserve_1: 0,
@@ -70,7 +119,7 @@ impl Dex {
                     abi::IUniswapV3Factory::new(self.factory_address, provider);
 
                 let (token_a, token_b, fee, _, pair_address) = match uniswap_v3_factory
-                    .decode_event::<(Address, Address, u128, u128, Address)>(
+                    .decode_event::<(Address, Address, u32, u128, Address)>(
                         "PoolCreated",
                         log.topics,
                         log.data,
@@ -90,6 +139,8 @@ impl Dex {
                     token_b,
                     //Initialize the following variables as zero values
                     //They will be populated when getting pair reserves
+                    token_a_decimals: 0,
+                    token_b_decimals: 0,
                     a_to_b: false,
                     reserve_0: 0,
                     reserve_1: 0,
