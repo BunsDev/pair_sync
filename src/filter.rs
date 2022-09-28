@@ -3,6 +3,8 @@ use crate::error::PairSyncError;
 use crate::pair::Pair;
 use ethers::providers::{JsonRpcClient, Provider};
 use ethers::types::H160;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::{collections::HashSet, sync::Arc};
 
 //Filters out pairs where the blacklisted address is the token_a address or token_b address
@@ -56,7 +58,6 @@ pub fn filter_blacklisted_addresses(
 //TODO: write a helperfunction to create a usd_weth_pair pool
 
 //Filter that removes pools with that contain less than a specified usd value
-#[allow(dead_code)]
 pub async fn filter_pools_below_usd_threshold<P>(
     pairs: Vec<Pair>,
     dexes: Vec<Dex>,
@@ -68,6 +69,7 @@ pub async fn filter_pools_below_usd_threshold<P>(
 where
     P: 'static + JsonRpcClient,
 {
+    //Init a new vec to hold the filtered pairs
     let mut filtered_pairs = vec![];
 
     //Get price of weth in USD
@@ -75,6 +77,10 @@ where
         .get_price(usd_weth_pair.a_to_b, provider.clone())
         .await?;
 
+    //Initialize a Hashmap to keep track of token/weth prices already found to avoid unnecessary calls to the node
+    let mut token_weth_prices: HashMap<H160, f64> = HashMap::new();
+
+    //For each pair, check if the usd value meets the specified threshold
     for pair in pairs {
         let (token_a_reserves, token_b_reserves) = if pair.a_to_b {
             (pair.reserve_0, pair.reserve_1)
@@ -82,22 +88,21 @@ where
             (pair.reserve_1, pair.reserve_0)
         };
 
-        //Get token_a/Weth price
-        let token_a_weth_pair =
-            match get_token_to_weth_pool(pair.token_a, weth_address, &dexes, provider.clone())
-                .await?
-            {
-                token_a_weth_pair if !token_a_weth_pair.is_empty() => token_a_weth_pair,
-                _ => {
-                    //TODO: document behavior where if the pair address can not be found in the dexes you provided,
-                    //it will be dropped from the final filtered pairs
-                    continue;
-                }
-            };
+        let token_a_price_per_weth = match token_weth_prices.get(&pair.token_a) {
+            Some(price) => price.to_owned(),
+            None => {
+                let price = get_price_of_token_per_weth(
+                    pair.token_a,
+                    weth_address,
+                    &dexes,
+                    provider.clone(),
+                )
+                .await?;
+                token_weth_prices.insert(pair.token_a, price);
 
-        let token_a_price_per_weth = token_a_weth_pair
-            .get_price(token_a_weth_pair.token_a == weth_address, provider.clone())
-            .await?;
+                price
+            }
+        };
 
         //Get weth value of token a in pool
         let token_a_weth_value_in_pool =
@@ -107,22 +112,21 @@ where
         //Calculate token_a usd value
         let token_a_usd_value_in_pool = token_a_weth_value_in_pool * usd_price_per_weth;
 
-        //Get token_b/Weth price
-        let token_b_weth_pair =
-            match get_token_to_weth_pool(pair.token_b, weth_address, &dexes, provider.clone())
-                .await?
-            {
-                token_a_weth_pair if !token_a_weth_pair.is_empty() => token_a_weth_pair,
-                _ => {
-                    //TODO: document behavior where if the pair address can not be found in the dexes you provided,
-                    //it will be dropped from the final filtered pairs
-                    continue;
-                }
-            };
+        let token_b_price_per_weth = match token_weth_prices.get(&pair.token_b) {
+            Some(price) => price.to_owned(),
+            None => {
+                let price = get_price_of_token_per_weth(
+                    pair.token_b,
+                    weth_address,
+                    &dexes,
+                    provider.clone(),
+                )
+                .await?;
+                token_weth_prices.insert(pair.token_b, price);
 
-        let token_b_price_per_weth = token_b_weth_pair
-            .get_price(token_b_weth_pair.token_a == weth_address, provider.clone())
-            .await?;
+                price
+            }
+        };
 
         //Get weth value of token a in pool
         let token_b_weth_value_in_pool =
@@ -140,6 +144,36 @@ where
         }
     }
     Ok(filtered_pairs)
+}
+
+async fn get_price_of_token_per_weth<P: 'static + JsonRpcClient>(
+    token_address: H160,
+    weth_address: H160,
+    dexes: &Vec<Dex>,
+    provider: Arc<Provider<P>>,
+) -> Result<f64, PairSyncError<P>> {
+    if token_address == weth_address {
+        return Ok(1.0);
+    }
+
+    //Get token_a/weth price
+    let token_a_weth_pair = match get_token_to_weth_pool(
+        token_address,
+        weth_address,
+        &dexes,
+        provider.clone(),
+    )
+    .await?
+    {
+        token_a_weth_pair if !token_a_weth_pair.is_empty() => token_a_weth_pair,
+        _ => return Ok(0.0),
+    };
+
+    let token_a_price_per_weth = token_a_weth_pair
+        .get_price(token_a_weth_pair.token_a == weth_address, provider.clone())
+        .await?;
+
+    Ok(token_a_price_per_weth)
 }
 
 //Gets the best token to weth pairing from the dexes provided
@@ -173,8 +207,19 @@ where
 
 //Filter that removes pools with that contain less than a specified weth value
 //
-#[allow(dead_code)]
-fn filter_pools_below_weth_threshold(_weth_address: H160, _weth_value_threshold: f64) {}
+pub async fn filter_pools_below_weth_threshold<P>(
+    pairs: Vec<Pair>,
+    dexes: Vec<Dex>,
+    weth_address: H160,
+    weth_threshold: f64,
+    provider: Arc<Provider<P>>,
+) -> Result<Vec<Pair>, PairSyncError<P>>
+where
+    P: 'static + JsonRpcClient,
+{
+    let mut filtered_pairs = vec![];
+    Ok(filtered_pairs)
+}
 
 //Filter to remove tokens that incorporate fees on transfer.
 //This filter determines fee on transfer tokens by simulating a transfer and checking if the recieved amount is less
