@@ -3,7 +3,6 @@ use crate::error::PairSyncError;
 use super::dex::Dex;
 use super::pair::Pair;
 use super::throttle::RequestThrottle;
-use core::panic;
 use ethers::{
     providers::{JsonRpcClient, Middleware, Provider, ProviderError},
     types::{BlockNumber, Filter, ValueOrArray, H160, U64},
@@ -91,10 +90,7 @@ where
     for handle in handles {
         match handle.await {
             Ok(sync_result) => aggregated_pairs.extend(sync_result?),
-
-            Err(join_error) => {
-                panic!("Error when joining handles: {}", join_error.to_string());
-            }
+            Err(join_error) => return Err(PairSyncError::JoinError(join_error)),
         }
     }
 
@@ -109,7 +105,7 @@ async fn get_all_pairs<P>(
     current_block: BlockNumber,
     request_throttle: Arc<Mutex<RequestThrottle>>,
     progress_bar: ProgressBar,
-) -> Result<Vec<Pair>, ProviderError>
+) -> Result<Vec<Pair>, PairSyncError<P>>
 where
     P: 'static + JsonRpcClient,
 {
@@ -174,9 +170,7 @@ where
         match handle.await {
             Ok(sync_result) => aggregated_pairs.extend(sync_result?),
 
-            Err(join_error) => {
-                panic!("Error when joining handles: {}", join_error.to_string());
-            }
+            Err(join_error) => return Err(PairSyncError::JoinError(join_error)),
         }
     }
     Ok(aggregated_pairs)
@@ -243,9 +237,7 @@ where
         match handle.await {
             Ok(sync_result) => updated_pairs.push(sync_result?),
 
-            Err(join_error) => {
-                panic!("Error when joining handles: {}", join_error.to_string());
-            }
+            Err(join_error) => return Err(PairSyncError::JoinError(join_error)),
         }
     }
 
