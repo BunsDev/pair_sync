@@ -90,12 +90,7 @@ where
 
     for handle in handles {
         match handle.await {
-            Ok(sync_result) => match sync_result {
-                Ok(pairs) => aggregated_pairs.extend(pairs),
-                Err(provider_error) => {
-                    panic!("Error when syncing pairs: {}", provider_error.to_string());
-                }
-            },
+            Ok(sync_result) => aggregated_pairs.extend(sync_result?),
 
             Err(join_error) => {
                 panic!("Error when joining handles: {}", join_error.to_string());
@@ -177,15 +172,7 @@ where
     let mut aggregated_pairs: Vec<Pair> = vec![];
     for handle in handles {
         match handle.await {
-            Ok(sync_result) => match sync_result {
-                Ok(pairs) => aggregated_pairs.extend(pairs),
-                Err(provider_error) => {
-                    panic!(
-                        "Error when getting Pair/Pool Created events: {}",
-                        provider_error.to_string()
-                    );
-                }
-            },
+            Ok(sync_result) => aggregated_pairs.extend(sync_result?),
 
             Err(join_error) => {
                 panic!("Error when joining handles: {}", join_error.to_string());
@@ -254,19 +241,7 @@ where
     let mut updated_pairs: Vec<Pair> = vec![];
     for handle in handles {
         match handle.await {
-            Ok(sync_result) => match sync_result {
-                Ok(pair) => {
-                    if !pair.reserves_are_zero() {
-                        updated_pairs.push(pair)
-                    }
-                }
-                Err(provider_error) => {
-                    panic!(
-                        "Error when getting pair reserves: {}",
-                        provider_error.to_string()
-                    );
-                }
-            },
+            Ok(sync_result) => updated_pairs.push(sync_result?),
 
             Err(join_error) => {
                 panic!("Error when joining handles: {}", join_error.to_string());
