@@ -1,10 +1,6 @@
 use std::sync::Arc;
 
-use crate::{
-    abi,
-    dex::{DexType},
-    error::PairSyncError,
-};
+use crate::{abi, dex::DexType, error::PairSyncError};
 use ethers::{
     providers::{JsonRpcClient, Provider, ProviderError},
     types::H160,
