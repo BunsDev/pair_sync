@@ -1,6 +1,6 @@
 use std::error::Error;
 
-use ethers::providers::{Http, Provider, ProviderError};
+use ethers::providers::{Http, Provider};
 
 use pair_sync::{dex::Dex, dex::DexType, sync};
 

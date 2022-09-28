@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use ethers::providers::{Ipc, Provider, ProviderError};
+use ethers::providers::{Ipc, Provider};
 use pair_sync::{dex::Dex, dex::DexType, sync};
 use std::error::Error;
 
