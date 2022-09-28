@@ -1,7 +1,7 @@
-use crate::dex::{self, Dex, DexType};
+use crate::dex::{Dex, DexType};
 use crate::error::PairSyncError;
 use crate::pair::Pair;
-use ethers::providers::{Http, JsonRpcClient, Provider, ProviderError};
+use ethers::providers::{JsonRpcClient, Provider};
 use ethers::types::H160;
 use std::{collections::HashSet, sync::Arc};
 

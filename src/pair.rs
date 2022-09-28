@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     abi,
-    dex::{Dex, DexType},
+    dex::{DexType},
     error::PairSyncError,
 };
 use ethers::{
@@ -146,16 +146,14 @@ impl Pair {
             DexType::UniswapV2 => {
                 if self.a_to_b {
                     if a_per_b {
-                        return Ok(reserve_0 / reserve_1);
+                        Ok(reserve_0 / reserve_1)
                     } else {
-                        return Ok(reserve_1 / reserve_0);
+                        Ok(reserve_1 / reserve_0)
                     }
+                } else if a_per_b {
+                    Ok(reserve_1 / reserve_0)
                 } else {
-                    if a_per_b {
-                        return Ok(reserve_1 / reserve_0);
-                    } else {
-                        return Ok(reserve_0 / reserve_1);
-                    }
+                    Ok(reserve_0 / reserve_1)
                 }
             }
 
@@ -163,16 +161,14 @@ impl Pair {
                 //TODO: double check this
                 if self.a_to_b {
                     if a_per_b {
-                        return Ok(reserve_0 / reserve_1);
+                        Ok(reserve_0 / reserve_1)
                     } else {
-                        return Ok(reserve_1 / reserve_0);
+                        Ok(reserve_1 / reserve_0)
                     }
+                } else if a_per_b {
+                    Ok(reserve_1 / reserve_0)
                 } else {
-                    if a_per_b {
-                        return Ok(reserve_1 / reserve_0);
-                    } else {
-                        return Ok(reserve_0 / reserve_1);
-                    }
+                    Ok(reserve_0 / reserve_1)
                 }
             }
         }

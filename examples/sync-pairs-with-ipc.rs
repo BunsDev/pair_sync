@@ -1,8 +1,8 @@
 use std::time::Duration;
 
-use ethers::providers::{Ipc, JsonRpcClient, Provider, ProviderError};
+use ethers::providers::{Ipc, Provider, ProviderError};
 
-use pair_sync::{dex::Dex, dex::DexType, error::PairSyncError, sync};
+use pair_sync::{dex::Dex, dex::DexType, sync};
 
 #[tokio::main]
 async fn main() -> Result<(), ProviderError> {
