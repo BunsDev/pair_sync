@@ -87,6 +87,8 @@ pub async fn filter_pools_below_usd_threshold_with_throttle<P: 'static + JsonRpc
     provider: Arc<Provider<P>>,
     requests_per_second_limit: usize,
 ) -> Result<Vec<Pool>, PairSyncError<P>> {
+    //TODO: add progress bar
+
     //Init a new vec to hold the filtered pools
     let mut filtered_pools = vec![];
 
@@ -293,6 +295,8 @@ pub async fn filter_pools_below_weth_threshold_with_throttle<P: 'static + JsonRp
     provider: Arc<Provider<P>>,
     requests_per_second_limit: usize,
 ) -> Result<Vec<Pool>, PairSyncError<P>> {
+    //TODO: add progress bar
+
     //Init a new vec to hold the filtered pools
     let mut filtered_pools = vec![];
 
