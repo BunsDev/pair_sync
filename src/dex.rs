@@ -33,15 +33,12 @@ impl Dex {
     //TODO: rename this to be specific to what it needs to do
     //This should get the pair with the best liquidity from the dex variant.
     //If univ2, there will only be one pool, if univ3 there will be multiple
-    pub async fn get_pair_with_best_liquidity<P>(
+    pub async fn get_pair_with_best_liquidity<P: 'static + JsonRpcClient>(
         &self,
         token_a: H160,
         token_b: H160,
         provider: Arc<Provider<P>>,
-    ) -> Result<(H160, u32), PairSyncError<P>>
-    where
-        P: 'static + JsonRpcClient,
-    {
+    ) -> Result<(H160, u32), PairSyncError<P>> {
         match self.dex_type {
             DexType::UniswapV2 => {
                 let uniswap_v2_factory =

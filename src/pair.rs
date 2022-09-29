@@ -170,13 +170,10 @@ impl Pair {
         }
     }
 
-    pub async fn update_token_decimals<P>(
+    pub async fn update_token_decimals<P: 'static + JsonRpcClient>(
         &mut self,
         provider: Arc<Provider<P>>,
-    ) -> Result<(), PairSyncError<P>>
-    where
-        P: 'static + JsonRpcClient,
-    {
+    ) -> Result<(), PairSyncError<P>> {
         self.token_a_decimals = abi::IErc20::new(self.token_a, provider.clone())
             .decimals()
             .call()

@@ -2,7 +2,7 @@ use crate::dex::{Dex, DexType};
 use crate::error::PairSyncError;
 use crate::pair::Pair;
 use crate::throttle::RequestThrottle;
-use ethers::providers::{JsonRpcClient, Provider};
+use ethers::providers::{JsonRpcClient, Middleware, Provider};
 use ethers::types::H160;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -57,17 +57,14 @@ pub fn filter_blacklisted_addresses(
 }
 
 //Filter that removes pools with that contain less than a specified usd value
-pub async fn filter_pools_below_usd_threshold<P>(
+pub async fn filter_pools_below_usd_threshold<P: 'static + JsonRpcClient>(
     pairs: Vec<Pair>,
     dexes: Vec<Dex>,
     usd_weth_pair: Pair,
     weth_address: H160,
     usd_threshold: f64,
     provider: Arc<Provider<P>>,
-) -> Result<Vec<Pair>, PairSyncError<P>>
-where
-    P: 'static + JsonRpcClient,
-{
+) -> Result<Vec<Pair>, PairSyncError<P>> {
     filter_pools_below_usd_threshold_with_throttle(
         pairs,
         dexes,
@@ -81,7 +78,7 @@ where
 }
 
 //Filter that removes pools with that contain less than a specified usd value
-pub async fn filter_pools_below_usd_threshold_with_throttle<P>(
+pub async fn filter_pools_below_usd_threshold_with_throttle<P: 'static + JsonRpcClient>(
     pairs: Vec<Pair>,
     dexes: Vec<Dex>,
     usd_weth_pair: Pair,
@@ -89,10 +86,7 @@ pub async fn filter_pools_below_usd_threshold_with_throttle<P>(
     usd_threshold: f64,
     provider: Arc<Provider<P>>,
     requests_per_second_limit: usize,
-) -> Result<Vec<Pair>, PairSyncError<P>>
-where
-    P: 'static + JsonRpcClient,
-{
+) -> Result<Vec<Pair>, PairSyncError<P>> {
     //Init a new vec to hold the filtered pairs
     let mut filtered_pairs = vec![];
 
@@ -240,15 +234,12 @@ async fn get_price_of_token_per_weth<P: 'static + JsonRpcClient>(
 }
 
 //Gets the best token to weth pairing from the dexes provided
-async fn get_token_to_weth_pool<P>(
+async fn get_token_to_weth_pool<P: 'static + JsonRpcClient>(
     token_a: H160,
     weth_address: H160,
     dexes: &Vec<Dex>,
     provider: Arc<Provider<P>>,
-) -> Result<Pair, PairSyncError<P>>
-where
-    P: 'static + JsonRpcClient,
-{
+) -> Result<Pair, PairSyncError<P>> {
     let mut token_a_weth_pair = Pair::empty_pair(DexType::UniswapV2);
 
     for dex in dexes {
@@ -275,16 +266,13 @@ where
 
 //Filter that removes pools with that contain less than a specified weth value
 //
-pub async fn filter_pools_below_weth_threshold<P>(
+pub async fn filter_pools_below_weth_threshold<P: 'static + JsonRpcClient>(
     pairs: Vec<Pair>,
     dexes: Vec<Dex>,
     weth_address: H160,
     weth_threshold: f64,
     provider: Arc<Provider<P>>,
-) -> Result<Vec<Pair>, PairSyncError<P>>
-where
-    P: 'static + JsonRpcClient,
-{
+) -> Result<Vec<Pair>, PairSyncError<P>> {
     filter_pools_below_weth_threshold_with_throttle(
         pairs,
         dexes,
@@ -296,17 +284,14 @@ where
     .await
 }
 
-pub async fn filter_pools_below_weth_threshold_with_throttle<P>(
+pub async fn filter_pools_below_weth_threshold_with_throttle<P: 'static + JsonRpcClient>(
     pairs: Vec<Pair>,
     dexes: Vec<Dex>,
     weth_address: H160,
     weth_threshold: f64,
     provider: Arc<Provider<P>>,
     requests_per_second_limit: usize,
-) -> Result<Vec<Pair>, PairSyncError<P>>
-where
-    P: 'static + JsonRpcClient,
-{
+) -> Result<Vec<Pair>, PairSyncError<P>> {
     //Init a new vec to hold the filtered pairs
     let mut filtered_pairs = vec![];
 
@@ -426,4 +411,4 @@ where
 //than the sent amount. It can not be guaranteed that all fee tokens are filtered out. For example,
 //if a token has a fee mechanic but the fee is set to 0, this filter will not remove the token.
 #[allow(dead_code)]
-fn filter_fee_tokens() {}
+fn filter_fee_tokens<P: 'static + JsonRpcClient>(provider: Arc<Provider<P>>) {}

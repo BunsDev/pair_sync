@@ -11,26 +11,20 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::sync::{Arc, Mutex};
 
 //Get all pairs and sync reserve values for each Dex in the `dexes` vec.
-pub async fn sync_pairs<P>(
+pub async fn sync_pairs<P: 'static + JsonRpcClient>(
     dexes: Vec<Dex>,
     provider: Provider<P>,
-) -> Result<Vec<Pair>, PairSyncError<P>>
-where
-    P: 'static + JsonRpcClient,
-{
+) -> Result<Vec<Pair>, PairSyncError<P>> {
     //Sync pairs with throttle but set the requests per second limit to 0, disabling the throttle.
     sync_pairs_with_throttle(dexes, provider, 0).await
 }
 
 //Get all pairs and sync reserve values for each Dex in the `dexes` vec.
-pub async fn sync_pairs_with_throttle<P>(
+pub async fn sync_pairs_with_throttle<P: 'static + JsonRpcClient>(
     dexes: Vec<Dex>,
     provider: Provider<P>,
     requests_per_second_limit: usize,
-) -> Result<Vec<Pair>, PairSyncError<P>>
-where
-    P: 'static + JsonRpcClient,
-{
+) -> Result<Vec<Pair>, PairSyncError<P>> {
     //Initalize a new request throttle
     let request_throttle = Arc::new(Mutex::new(RequestThrottle::new(requests_per_second_limit)));
 
@@ -99,16 +93,13 @@ where
 }
 
 //Function to get all pair created events for a given Dex factory address
-async fn get_all_pairs<P>(
+async fn get_all_pairs<P: 'static + JsonRpcClient>(
     dex: Dex,
     provider: Arc<Provider<P>>,
     current_block: BlockNumber,
     request_throttle: Arc<Mutex<RequestThrottle>>,
     progress_bar: ProgressBar,
-) -> Result<Vec<Pair>, PairSyncError<P>>
-where
-    P: 'static + JsonRpcClient,
-{
+) -> Result<Vec<Pair>, PairSyncError<P>> {
     //Define the step for searching a range of blocks for pair created events
     let step = 100000;
     //Unwrap can be used here because the creation block was verified within `Dex::new()`
@@ -177,16 +168,13 @@ where
 }
 
 //Function to get reserves for each pair in the `pairs` vec.
-async fn get_pair_reserves<P>(
+async fn get_pair_reserves<P: 'static + JsonRpcClient>(
     pairs: Vec<Pair>,
     dex_factory_address: H160,
     provider: Arc<Provider<P>>,
     request_throttle: Arc<Mutex<RequestThrottle>>,
     progress_bar: ProgressBar,
-) -> Result<Vec<Pair>, PairSyncError<P>>
-where
-    P: 'static + JsonRpcClient,
-{
+) -> Result<Vec<Pair>, PairSyncError<P>> {
     //Initialize a vec to track each async task.
     let mut handles: Vec<tokio::task::JoinHandle<Result<Pair, _>>> = vec![];
 
