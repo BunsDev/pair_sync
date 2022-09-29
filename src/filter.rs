@@ -56,8 +56,6 @@ pub fn filter_blacklisted_addresses(
     filtered_pairs
 }
 
-//TODO: write a helperfunction to create a usd_weth_pair pool
-
 //Filter that removes pools with that contain less than a specified usd value
 pub async fn filter_pools_below_usd_threshold<P>(
     pairs: Vec<Pair>,
@@ -287,7 +285,139 @@ pub async fn filter_pools_below_weth_threshold<P>(
 where
     P: 'static + JsonRpcClient,
 {
+    Ok(filter_pools_below_weth_threshold_with_throttle(
+        pairs,
+        dexes,
+        weth_address,
+        weth_threshold,
+        provider,
+        0,
+    )
+    .await?)
+}
+
+pub async fn filter_pools_below_weth_threshold_with_throttle<P>(
+    pairs: Vec<Pair>,
+    dexes: Vec<Dex>,
+    weth_address: H160,
+    weth_threshold: f64,
+    provider: Arc<Provider<P>>,
+    requests_per_second_limit: usize,
+) -> Result<Vec<Pair>, PairSyncError<P>>
+where
+    P: 'static + JsonRpcClient,
+{
+    //Init a new vec to hold the filtered pairs
     let mut filtered_pairs = vec![];
+
+    let request_throttle = Arc::new(Mutex::new(RequestThrottle::new(requests_per_second_limit)));
+
+    //Initialize a Hashmap to keep track of token/weth prices already found to avoid unnecessary calls to the node
+    let token_weth_prices: Arc<Mutex<HashMap<H160, f64>>> = Arc::new(Mutex::new(HashMap::new()));
+    let mut handles = vec![];
+    //For each pair, check if the usd value meets the specified threshold
+    for pair in pairs {
+        let token_weth_prices = token_weth_prices.clone();
+        let request_throttle = request_throttle.clone();
+        let provider = provider.clone();
+        let dexes = dexes.clone();
+
+        handles.push(tokio::spawn(async move {
+            let (token_a_reserves, token_b_reserves) = if pair.a_to_b {
+                (pair.reserve_0, pair.reserve_1)
+            } else {
+                (pair.reserve_1, pair.reserve_0)
+            };
+
+            let token_a_price_per_weth = token_weth_prices
+                .lock()
+                .unwrap()
+                .get(&pair.token_a)
+                .map(|price| price.to_owned());
+
+            let token_a_price_per_weth = match token_a_price_per_weth {
+                Some(price) => price,
+                None => {
+                    request_throttle.lock().unwrap().increment_or_sleep(1);
+                    let price = get_price_of_token_per_weth(
+                        pair.token_a,
+                        weth_address,
+                        &dexes,
+                        provider.clone(),
+                    )
+                    .await?;
+
+                    token_weth_prices
+                        .lock()
+                        .unwrap()
+                        .insert(pair.token_a, price);
+
+                    price
+                }
+            };
+
+            //Get weth value of token a in pool
+            let token_a_weth_value_in_pool =
+                ((token_a_reserves * 10u128.pow(pair.token_a_decimals.into())) as f64)
+                    / token_a_price_per_weth;
+
+            let token_b_price_per_weth = token_weth_prices
+                .lock()
+                .unwrap()
+                .get(&pair.token_b)
+                .map(|price| price.to_owned());
+
+            let token_b_price_per_weth = match token_b_price_per_weth {
+                Some(price) => price.to_owned(),
+                None => {
+                    request_throttle.lock().unwrap().increment_or_sleep(1);
+                    let price = get_price_of_token_per_weth(
+                        pair.token_b,
+                        weth_address,
+                        &dexes,
+                        provider.clone(),
+                    )
+                    .await?;
+
+                    token_weth_prices
+                        .lock()
+                        .unwrap()
+                        .insert(pair.token_b, price);
+
+                    price
+                }
+            };
+
+            //Get weth value of token a in pool
+            let token_b_weth_value_in_pool =
+                ((token_b_reserves * 10u128.pow(pair.token_b_decimals.into())) as f64)
+                    / token_b_price_per_weth;
+
+            //Compare the sum of token_a and token_b usd value against the specified threshold
+            let total_weth_value_in_pool = token_a_weth_value_in_pool + token_b_weth_value_in_pool;
+
+            Ok::<_, PairSyncError<P>>((total_weth_value_in_pool, pair))
+        }));
+    }
+
+    for handle in handles {
+        match handle.await {
+            Ok(filter_result) => match filter_result {
+                Ok((total_weth_value_in_pool, pool)) => {
+                    if weth_threshold <= total_weth_value_in_pool {
+                        filtered_pairs.push(pool);
+                    }
+                }
+                Err(pair_sync_error) => match pair_sync_error {
+                    PairSyncError::PairDoesNotExistInDexes(_, _) => {}
+                    _ => return Err(pair_sync_error),
+                },
+            },
+
+            Err(join_error) => return Err(PairSyncError::JoinError(join_error)),
+        }
+    }
+
     Ok(filtered_pairs)
 }
 
