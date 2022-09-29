@@ -145,11 +145,8 @@ async fn get_all_pools<P: 'static + JsonRpcClient>(
 
             //For each pair created log, create a new Pair type and add it to the pairs vec
             for log in logs {
-                match dex.new_pool_from_event(log, provider.clone()) {
-                    Ok(pool) => {
-                        pools.push(pool);
-                    }
-                    Err(_) => {}
+                if let Ok(pool) = dex.new_pool_from_event(log, provider.clone()) {
+                    pools.push(pool);
                 }
             }
 

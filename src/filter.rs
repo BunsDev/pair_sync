@@ -2,7 +2,7 @@ use crate::dex::{Dex, DexType};
 use crate::error::PairSyncError;
 use crate::pool::Pool;
 use crate::throttle::RequestThrottle;
-use ethers::providers::{JsonRpcClient, Middleware, Provider};
+use ethers::providers::{JsonRpcClient, Provider};
 use ethers::types::H160;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -412,4 +412,4 @@ pub async fn filter_pools_below_weth_threshold_with_throttle<P: 'static + JsonRp
 //than the sent amount. It can not be guaranteed that all fee tokens are filtered out. For example,
 //if a token has a fee mechanic but the fee is set to 0, this filter will not remove the token.
 #[allow(dead_code)]
-fn filter_fee_tokens<P: 'static + JsonRpcClient>(provider: Arc<Provider<P>>) {}
+fn filter_fee_tokens<P: 'static + JsonRpcClient>(_provider: Arc<Provider<P>>) {}
