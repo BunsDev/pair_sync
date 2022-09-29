@@ -6,7 +6,7 @@ use ethers::{
     types::{Address, BlockNumber, Log, H160, H256, U256},
 };
 
-use crate::{abi, error::PairSyncError, pair::Pair};
+use crate::{abi, error::PairSyncError, pair::Pool};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Dex {
@@ -79,29 +79,24 @@ impl Dex {
         }
     }
 
-    pub fn new_pair_from_pair_created_event<P>(&self, log: Log, provider: Arc<Provider<P>>) -> Pair
-    where
-        P: JsonRpcClient,
-    {
+    pub fn new_pair_from_pair_created_event<P: JsonRpcClient>(
+        &self,
+        log: Log,
+        provider: Arc<Provider<P>>,
+    ) -> Result<Pool, PairSyncError<P>> {
         match self.dex_type {
             DexType::UniswapV2 => {
                 let uniswap_v2_factory =
                     abi::IUniswapV2Factory::new(self.factory_address, provider);
 
                 let (token_a, token_b, pair_address, _) =
-                    match uniswap_v2_factory.decode_event::<(Address, Address, Address, U256)>(
+                    uniswap_v2_factory.decode_event::<(Address, Address, Address, U256)>(
                         "PairCreated",
                         log.topics,
                         log.data,
-                    ) {
-                        Ok(result) => result,
-                        Err(_) => {
-                            //If there was an abi error, continue without adding the pair
-                            return Pair::empty_pair(self.dex_type);
-                        }
-                    };
+                    )?;
 
-                Pair {
+                Ok(Pool {
                     dex_type: DexType::UniswapV2,
                     pair_address,
                     token_a,
@@ -114,26 +109,20 @@ impl Dex {
                     reserve_0: 0,
                     reserve_1: 0,
                     fee: 300,
-                }
+                })
             }
             DexType::UniswapV3 => {
                 let uniswap_v3_factory =
                     abi::IUniswapV3Factory::new(self.factory_address, provider);
 
-                let (token_a, token_b, fee, _, pair_address) = match uniswap_v3_factory
-                    .decode_event::<(Address, Address, u32, u128, Address)>(
+                let (token_a, token_b, fee, _, pair_address) =
+                    uniswap_v3_factory.decode_event::<(Address, Address, u32, u128, Address)>(
                         "PoolCreated",
                         log.topics,
                         log.data,
-                    ) {
-                    Ok(result) => result,
-                    Err(_) => {
-                        //If there was an abi error, continue without adding the pair
-                        return Pair::empty_pair(self.dex_type);
-                    }
-                };
+                    )?;
 
-                Pair {
+                Ok(Pool {
                     dex_type: DexType::UniswapV3,
 
                     pair_address,
@@ -147,7 +136,7 @@ impl Dex {
                     reserve_0: 0,
                     reserve_1: 0,
                     fee,
-                }
+                })
             }
         }
     }

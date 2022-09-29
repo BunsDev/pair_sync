@@ -1,4 +1,4 @@
-use ethers::prelude::ContractError;
+use ethers::prelude::{AbiError, ContractError};
 use ethers::providers::{JsonRpcClient, Provider, ProviderError};
 use ethers::types::H160;
 use thiserror::Error;
@@ -13,6 +13,8 @@ where
     ProviderError(#[from] ProviderError),
     #[error("Contract error")]
     ContractError(#[from] ContractError<Provider<P>>),
+    #[error("ABI error")]
+    ABIError(#[from] AbiError),
     #[error("Join error")]
     JoinError(#[from] JoinError),
     #[error("Pair for token_a/token_b does not exist in provided dexes")]

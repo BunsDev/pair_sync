@@ -7,7 +7,7 @@ use ethers::{
 };
 
 #[derive(Debug)]
-pub struct Pair {
+pub struct Pool {
     pub pair_address: H160,
     pub token_a: H160,
     pub token_a_decimals: u8,
@@ -20,7 +20,7 @@ pub struct Pair {
     pub dex_type: DexType,
 }
 
-impl Pair {
+impl Pool {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         pair_address: H160,
@@ -33,8 +33,8 @@ impl Pair {
         reserve_1: u128,
         fee: u32,
         dex_type: DexType,
-    ) -> Pair {
-        Pair {
+    ) -> Pool {
+        Pool {
             pair_address,
             token_a,
             token_a_decimals,
@@ -48,8 +48,8 @@ impl Pair {
         }
     }
 
-    pub fn empty_pair(dex_type: DexType) -> Pair {
-        Pair {
+    pub fn empty_pair(dex_type: DexType) -> Pool {
+        Pool {
             pair_address: H160::zero(),
             token_a: H160::zero(),
             token_a_decimals: 0,
