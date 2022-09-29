@@ -1,5 +1,6 @@
 use ethers::prelude::ContractError;
 use ethers::providers::{JsonRpcClient, Provider, ProviderError};
+use ethers::types::H160;
 use thiserror::Error;
 use tokio::task::JoinError;
 
@@ -14,4 +15,6 @@ where
     ContractError(#[from] ContractError<Provider<P>>),
     #[error("Join error")]
     JoinError(#[from] JoinError),
+    #[error("Pair for token_a/token_b does not exist in provided dexes")]
+    PairDoesNotExistInDexes(H160, H160),
 }
