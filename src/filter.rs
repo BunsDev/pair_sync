@@ -1,10 +1,15 @@
+use crate::abi;
 use crate::dex::{Dex, DexType};
 use crate::error::PairSyncError;
 use crate::pool::Pool;
 use crate::throttle::RequestThrottle;
-use ethers::providers::{JsonRpcClient, Provider};
-use ethers::types::H160;
+use ethers::abi::short_signature;
+use ethers::providers::call_raw::{spoof, RawCall};
+use ethers::providers::{JsonRpcClient, Middleware, Provider};
+use ethers::types::{TransactionRequest, H160, H256, U256};
+use ethers::utils::Anvil;
 use std::collections::HashMap;
+use std::str::FromStr;
 use std::sync::Mutex;
 use std::{collections::HashSet, sync::Arc};
 
@@ -416,4 +421,39 @@ pub async fn filter_pools_below_weth_threshold_with_throttle<P: 'static + JsonRp
 //than the sent amount. It can not be guaranteed that all fee tokens are filtered out. For example,
 //if a token has a fee mechanic but the fee is set to 0, this filter will not remove the token.
 #[allow(dead_code)]
-fn filter_fee_tokens<P: 'static + JsonRpcClient>(_provider: Arc<Provider<P>>) {}
+pub async fn filter_fee_tokens<P: 'static + JsonRpcClient + Middleware>(
+    pools: Vec<Pool>,
+    provider: Arc<Provider<P>>,
+) -> Result<Vec<Pool>, PairSyncError<P>> {
+    let filtered_pools = vec![];
+
+    //TODO: create a contract that takes a token, an amount to send and a recipient and returns the balance of the recipient after the transfer
+
+    //TODO: then spoof by setting the contract code at an address
+    //TODO: spoof approve for transferfrom the from address to the to address
+    //TODO: spoof the balance from the from address
+
+    for pool in pools {
+        let to_address = H160::from_str("0x000000000000000000000000000000000000dead").unwrap();
+        let from_address = H160::from_str("0x0000000000000000000000000000000000dead1").unwrap();
+
+        let erc20 = abi::IErc20::new(pool.token_a, provider.clone());
+
+        let mut state = spoof::state();
+        //Adjust the from address balance of the token to max u64
+        //Adjust the to address balance of the token to zero
+        state
+            .account(pool.token_a)
+            .store(from_address.into(), H256::from_low_u64_be(u64::MAX))
+            .store(to_address.into(), H256::zero());
+
+        erc20
+            .transfer(to_address, u64::MAX.into())
+            .from(from_address)
+            .call_raw()
+            .state(&state)
+            .await?;
+    }
+
+    Ok(filtered_pools)
+}
