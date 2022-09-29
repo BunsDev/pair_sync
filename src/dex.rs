@@ -6,7 +6,7 @@ use ethers::{
     types::{Address, BlockNumber, Log, H160, H256, U256},
 };
 
-use crate::{abi, error::PairSyncError, pair::Pool};
+use crate::{abi, error::PairSyncError, pool::Pool};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Dex {
@@ -31,9 +31,9 @@ impl Dex {
     }
 
     //TODO: rename this to be specific to what it needs to do
-    //This should get the pair with the best liquidity from the dex variant.
+    //This should get the pool with the best liquidity from the dex variant.
     //If univ2, there will only be one pool, if univ3 there will be multiple
-    pub async fn get_pair_with_best_liquidity<P: 'static + JsonRpcClient>(
+    pub async fn get_pool_with_best_liquidity<P: 'static + JsonRpcClient>(
         &self,
         token_a: H160,
         token_b: H160,
@@ -79,7 +79,7 @@ impl Dex {
         }
     }
 
-    pub fn new_pair_from_pair_created_event<P: JsonRpcClient>(
+    pub fn new_pool_from_event<P: JsonRpcClient>(
         &self,
         log: Log,
         provider: Arc<Provider<P>>,
@@ -89,7 +89,7 @@ impl Dex {
                 let uniswap_v2_factory =
                     abi::IUniswapV2Factory::new(self.factory_address, provider);
 
-                let (token_a, token_b, pair_address, _) =
+                let (token_a, token_b, address, _) =
                     uniswap_v2_factory.decode_event::<(Address, Address, Address, U256)>(
                         "PairCreated",
                         log.topics,
@@ -98,7 +98,7 @@ impl Dex {
 
                 Ok(Pool {
                     dex_type: DexType::UniswapV2,
-                    pair_address,
+                    address,
                     token_a,
                     token_b,
                     //Initialize the following variables as zero values
@@ -115,7 +115,7 @@ impl Dex {
                 let uniswap_v3_factory =
                     abi::IUniswapV3Factory::new(self.factory_address, provider);
 
-                let (token_a, token_b, fee, _, pair_address) =
+                let (token_a, token_b, fee, _, address) =
                     uniswap_v3_factory.decode_event::<(Address, Address, u32, u128, Address)>(
                         "PoolCreated",
                         log.topics,
@@ -124,12 +124,11 @@ impl Dex {
 
                 Ok(Pool {
                     dex_type: DexType::UniswapV3,
-
-                    pair_address,
+                    address,
                     token_a,
                     token_b,
                     //Initialize the following variables as zero values
-                    //They will be populated when getting pair reserves
+                    //They will be populated when getting pool reserves
                     token_a_decimals: 0,
                     token_b_decimals: 0,
                     a_to_b: false,
@@ -143,7 +142,7 @@ impl Dex {
 }
 
 impl DexType {
-    pub fn pair_created_event_signature(&self) -> H256 {
+    pub fn pool_created_event_signature(&self) -> H256 {
         match self {
             DexType::UniswapV2 => {
                 H256::from_str("0x0d3648bd0f6ba80134a33ba9275ac585d9d315f0ad8355cddefde31afa28d0e9")

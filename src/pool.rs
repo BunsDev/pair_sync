@@ -8,7 +8,7 @@ use ethers::{
 
 #[derive(Debug)]
 pub struct Pool {
-    pub pair_address: H160,
+    pub address: H160,
     pub token_a: H160,
     pub token_a_decimals: u8,
     pub token_b: H160,
@@ -23,7 +23,7 @@ pub struct Pool {
 impl Pool {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        pair_address: H160,
+        address: H160,
         token_a: H160,
         token_a_decimals: u8,
         token_b: H160,
@@ -35,7 +35,7 @@ impl Pool {
         dex_type: DexType,
     ) -> Pool {
         Pool {
-            pair_address,
+            address,
             token_a,
             token_a_decimals,
             token_b,
@@ -48,9 +48,9 @@ impl Pool {
         }
     }
 
-    pub fn empty_pair(dex_type: DexType) -> Pool {
+    pub fn empty_pool(dex_type: DexType) -> Pool {
         Pool {
-            pair_address: H160::zero(),
+            address: H160::zero(),
             token_a: H160::zero(),
             token_a_decimals: 0,
             token_b: H160::zero(),
@@ -79,7 +79,7 @@ impl Pool {
         P: JsonRpcClient,
     {
         self.dex_type
-            .get_reserves(self.token_a, self.token_b, self.pair_address, provider)
+            .get_reserves(self.token_a, self.token_b, self.address, provider)
             .await
     }
 
@@ -92,7 +92,7 @@ impl Pool {
     {
         let (reserve0, reserve1) = self
             .dex_type
-            .get_reserves(self.token_a, self.token_b, self.pair_address, provider)
+            .get_reserves(self.token_a, self.token_b, self.address, provider)
             .await?;
 
         self.reserve_0 = reserve0;
@@ -105,7 +105,7 @@ impl Pool {
     where
         P: JsonRpcClient,
     {
-        self.dex_type.get_token_0(self.pair_address, provider).await
+        self.dex_type.get_token_0(self.address, provider).await
     }
 
     pub async fn update_a_to_b<P>(
@@ -115,10 +115,7 @@ impl Pool {
     where
         P: JsonRpcClient,
     {
-        let token0 = self
-            .dex_type
-            .get_token_0(self.pair_address, provider)
-            .await?;
+        let token0 = self.dex_type.get_token_0(self.address, provider).await?;
 
         self.a_to_b = token0 == self.token_a;
 

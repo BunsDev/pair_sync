@@ -25,15 +25,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         12369621,
     ));
 
-    //Sync pairs
-    let pairs = sync::sync_pairs_with_throttle(dexes, provider, 10).await?;
+    //Sync pools
+    let pools = sync::sync_pairs_with_throttle(dexes, provider, 10).await?;
 
     //Create a list of blacklisted tokens
     let blacklisted_tokens =
         vec![H160::from_str("0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984").unwrap()];
 
     //Filter out blacklisted tokens
-    let _filtered_pairs = filter::filter_blacklisted_tokens(pairs, blacklisted_tokens);
+    let _filtered_pools = filter::filter_blacklisted_tokens(pools, blacklisted_tokens);
 
     Ok(())
 }

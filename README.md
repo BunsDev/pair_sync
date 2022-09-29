@@ -16,8 +16,8 @@ dexes.push(Dex::new(
     12369621,
 ));
 
-//Sync all pairs from Univ3
-let pairs: Vec<Pair> = sync::sync_pairs(dexes, provider).await?;
+//Sync all pools from Univ3
+let pools: Vec<pool> = sync::sync_pairs(dexes, provider).await?;
 ```
 
 ### Supported Dexes

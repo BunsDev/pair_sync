@@ -1,7 +1,7 @@
 use crate::error::PairSyncError;
 
 use super::dex::Dex;
-use super::pair::Pool;
+use super::pool::Pool;
 use super::throttle::RequestThrottle;
 use ethers::{
     providers::{JsonRpcClient, Middleware, Provider, ProviderError},
@@ -49,7 +49,7 @@ pub async fn sync_pairs_with_throttle<P: 'static + JsonRpcClient>(
                     .progress_chars("##-"),
             );
 
-            let pairs = get_all_pairs(
+            let pools = get_all_pools(
                 dex,
                 async_provider.clone(),
                 BlockNumber::Number(current_block),
@@ -65,8 +65,8 @@ pub async fn sync_pairs_with_throttle<P: 'static + JsonRpcClient>(
                     .progress_chars("##-"),
             );
 
-            let pairs = get_pair_reserves(
-                pairs,
+            let pools = get_pool_reserves(
+                pools,
                 dex.factory_address,
                 async_provider,
                 request_throttle,
@@ -74,26 +74,26 @@ pub async fn sync_pairs_with_throttle<P: 'static + JsonRpcClient>(
             )
             .await?;
 
-            Ok::<_, PairSyncError<P>>(pairs)
+            Ok::<_, PairSyncError<P>>(pools)
         }));
     }
 
-    //Aggregate the populated pairs from each thread
-    let mut aggregated_pairs: Vec<Pool> = vec![];
+    //Aggregate the populated pools from each thread
+    let mut aggregated_pools: Vec<Pool> = vec![];
 
     for handle in handles {
         match handle.await {
-            Ok(sync_result) => aggregated_pairs.extend(sync_result?),
+            Ok(sync_result) => aggregated_pools.extend(sync_result?),
             Err(join_error) => return Err(PairSyncError::JoinError(join_error)),
         }
     }
 
-    //Return the populated aggregated pairs vec
-    Ok(aggregated_pairs)
+    //Return the populated aggregated pools vec
+    Ok(aggregated_pools)
 }
 
 //Function to get all pair created events for a given Dex factory address
-async fn get_all_pairs<P: 'static + JsonRpcClient>(
+async fn get_all_pools<P: 'static + JsonRpcClient>(
     dex: Dex,
     provider: Arc<Provider<P>>,
     current_block: BlockNumber,
@@ -121,7 +121,7 @@ async fn get_all_pairs<P: 'static + JsonRpcClient>(
 
         //Spawn a new task to get pair created events from the block range
         handles.push(tokio::spawn(async move {
-            let mut pairs = vec![];
+            let mut pools = vec![];
 
             //Get pair created event logs within the block range
             let to_block = from_block + step as u64;
@@ -133,7 +133,7 @@ async fn get_all_pairs<P: 'static + JsonRpcClient>(
                 .get_logs(
                     &Filter::new()
                         .topic0(ValueOrArray::Value(
-                            dex.dex_type.pair_created_event_signature(),
+                            dex.dex_type.pool_created_event_signature(),
                         ))
                         .from_block(BlockNumber::Number(U64([from_block])))
                         .to_block(BlockNumber::Number(U64([to_block]))),
@@ -145,15 +145,15 @@ async fn get_all_pairs<P: 'static + JsonRpcClient>(
 
             //For each pair created log, create a new Pair type and add it to the pairs vec
             for log in logs {
-                match dex.new_pair_from_pair_created_event(log, provider.clone()) {
+                match dex.new_pool_from_event(log, provider.clone()) {
                     Ok(pool) => {
-                        pairs.push(pool);
+                        pools.push(pool);
                     }
                     Err(_) => {}
                 }
             }
 
-            Ok::<Vec<Pool>, ProviderError>(pairs)
+            Ok::<Vec<Pool>, ProviderError>(pools)
         }));
     }
 
@@ -170,8 +170,8 @@ async fn get_all_pairs<P: 'static + JsonRpcClient>(
 }
 
 //Function to get reserves for each pair in the `pairs` vec.
-async fn get_pair_reserves<P: 'static + JsonRpcClient>(
-    pairs: Vec<Pool>,
+async fn get_pool_reserves<P: 'static + JsonRpcClient>(
+    pools: Vec<Pool>,
     dex_factory_address: H160,
     provider: Arc<Provider<P>>,
     request_throttle: Arc<Mutex<RequestThrottle>>,
@@ -181,14 +181,14 @@ async fn get_pair_reserves<P: 'static + JsonRpcClient>(
     let mut handles: Vec<tokio::task::JoinHandle<Result<Pool, _>>> = vec![];
 
     //Initialize the progress bar message
-    progress_bar.set_length(pairs.len() as u64);
+    progress_bar.set_length(pools.len() as u64);
     progress_bar.set_message(format!(
         "Syncing reserves for pairs from: {}",
         dex_factory_address
     ));
 
     //For each pair in the pairs vec, get the reserves asyncrhonously
-    for mut pair in pairs {
+    for mut pool in pools {
         let request_throttle = request_throttle.clone();
         let provider = provider.clone();
         let progress_bar = progress_bar.clone();
@@ -201,36 +201,32 @@ async fn get_pair_reserves<P: 'static + JsonRpcClient>(
             //If the pair is uniswapv3, two rpc calls are made to initialize reserves
             //Because of this, the throttle increments by two to be conservative
             request_throttle.lock().unwrap().increment_or_sleep(2);
-            (pair.reserve_0, pair.reserve_1) = pair.get_reserves(provider.clone()).await?;
+            (pool.reserve_0, pool.reserve_1) = pool.get_reserves(provider.clone()).await?;
 
             // Make a call to get token0 to initialize a_to_b
             request_throttle.lock().unwrap().increment_or_sleep(1);
-            let token_0 = pair.get_token_0(provider.clone()).await?;
+            let token_0 = pool.get_token_0(provider.clone()).await?;
 
-            //Update a_to_b
-            if token_0 != H160::zero() {
-                pair.a_to_b = pair.token_a == token_0;
-            } else {
-                pair = Pool::empty_pair(pair.dex_type)
-            };
+            //Update a to b
+            pool.a_to_b = pool.token_a == token_0;
 
             //Update token decimals
-            pair.update_token_decimals(provider.clone()).await?;
+            pool.update_token_decimals(provider.clone()).await?;
 
-            Ok::<Pool, PairSyncError<P>>(pair)
+            Ok::<Pool, PairSyncError<P>>(pool)
         }));
     }
 
-    //Create a new vec to aggregate the pairs and populate the vec.
-    let mut updated_pairs: Vec<Pool> = vec![];
+    //Create a new vec to aggregate the pools and populate the vec.
+    let mut updated_pools: Vec<Pool> = vec![];
     for handle in handles {
         match handle.await {
-            Ok(sync_result) => updated_pairs.push(sync_result?),
+            Ok(sync_result) => updated_pools.push(sync_result?),
 
             Err(join_error) => return Err(PairSyncError::JoinError(join_error)),
         }
     }
 
-    //Return the vec of pairs with updated reserve values
-    Ok(updated_pairs)
+    //Return the vec of pools with updated reserve values
+    Ok(updated_pools)
 }
