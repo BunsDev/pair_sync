@@ -68,7 +68,7 @@ pub async fn filter_pools_below_usd_threshold<P>(
 where
     P: 'static + JsonRpcClient,
 {
-    Ok(filter_pools_below_usd_threshold_with_throttle(
+    filter_pools_below_usd_threshold_with_throttle(
         pairs,
         dexes,
         usd_weth_pair,
@@ -77,7 +77,7 @@ where
         provider,
         0,
     )
-    .await?)
+    .await
 }
 
 //Filter that removes pools with that contain less than a specified usd value
@@ -230,7 +230,7 @@ async fn get_price_of_token_per_weth<P: 'static + JsonRpcClient>(
 
     //Get token_a/weth price
     let token_a_weth_pair =
-        get_token_to_weth_pool(token_address, weth_address, &dexes, provider.clone()).await?;
+        get_token_to_weth_pool(token_address, weth_address, dexes, provider.clone()).await?;
 
     let token_a_price_per_weth = token_a_weth_pair
         .get_price(token_a_weth_pair.token_a == weth_address, provider.clone())
@@ -285,7 +285,7 @@ pub async fn filter_pools_below_weth_threshold<P>(
 where
     P: 'static + JsonRpcClient,
 {
-    Ok(filter_pools_below_weth_threshold_with_throttle(
+    filter_pools_below_weth_threshold_with_throttle(
         pairs,
         dexes,
         weth_address,
@@ -293,7 +293,7 @@ where
         provider,
         0,
     )
-    .await?)
+    .await
 }
 
 pub async fn filter_pools_below_weth_threshold_with_throttle<P>(
